@@ -1,0 +1,7 @@
+flask>=3.0
+flask-socketio>=5.3
+pyserial>=3.5
+eventlet>=0.35
+# 注意：如果存在冲突的 serial 包，请先卸载：
+#   pip uninstall serial -y
+#   pip install pyserial

@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZDT_X42S 电机调试工具</title>
+<style>
+/* ── Reset & Base ───────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface2: #21262d;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text2: #8b949e;
+  --accent: #58a6ff;
+  --accent2: #79c0ff;
+  --green: #3fb950;
+  --red: #f85149;
+  --yellow: #d2991d;
+  --orange: #db6d28;
+  --purple: #a371f7;
+  --cyan: #39d4c5;
+  --host-color: #58a6ff;
+  --motor-color: #3fb950;
+  --emulated-color: #a371f7;
+  --sent-badge-bg: rgba(88,166,255,.15);
+  --sent-badge-color: var(--accent);
+  --received-badge-bg: rgba(63,185,80,.15);
+  --received-badge-color: var(--green);
+  --cmd-name-color: var(--cyan);
+  --sidebar-width: 290px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --mono: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+}
+html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; overflow: hidden; }
+input, select, button, textarea { font-family: inherit; font-size: inherit; }
+button { cursor: pointer; border: none; border-radius: 6px; padding: 6px 14px; font-weight: 500; transition: all .15s; }
+button:active { transform: scale(0.97); }
+a { color: var(--accent); }
+
+/* ── Layout ─────────────────────────────────────────────── */
+#app { display: grid; grid-template-columns: var(--sidebar-width) 1fr; height: 100vh; transition: grid-template-columns .25s ease; }
+#app.sidebar-closed { --sidebar-width: 0px; }
+#app.sidebar-closed #sidebar { opacity: 0; pointer-events: none; overflow: hidden; }
+#sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; transition: opacity .25s ease; }
+#sidebar-toggle-btn { position: fixed; left: var(--sidebar-width); top: 50%; transform: translateY(-50%); z-index: 100; width: 22px; height: 44px; background: var(--surface); border: 1px solid var(--border); border-left: none; border-radius: 0 6px 6px 0; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text2); font-size: 11px; transition: left .25s ease, background .15s; padding: 0; }
+#sidebar-toggle-btn:hover { background: var(--surface2); color: var(--text); }
+#app.sidebar-closed #sidebar-toggle-btn { left: 0; }
+#main { display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Sidebar ────────────────────────────────────────────── */
+.side-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.side-section h3 { font-size: 11px; letter-spacing: .8px; color: var(--text2); margin-bottom: 10px; }
+.form-group { margin-bottom: 8px; }
+.form-group label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+.form-group input, .form-group select { width: 100%; padding: 7px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); outline: none; }
+.form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+.form-row { display: flex; gap: 6px; }
+.form-row .form-group { flex: 1; }
+
+.btn-primary { background: var(--accent); color: #fff; width: 100%; padding: 9px; font-weight: 600; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-danger { background: var(--red); color: #fff; width: 100%; padding: 9px; font-weight: 600; }
+.btn-danger:hover { opacity: .85; }
+.btn-sm { background: var(--surface2); color: var(--text); padding: 5px 10px; font-size: 12px; border: 1px solid var(--border); }
+.btn-sm:hover { background: var(--border); }
+.btn-accent { background: var(--purple); color: #fff; }
+.btn-accent:hover { opacity: .85; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-green:hover { opacity: .85; }
+.btn-xs { padding: 2px 6px; font-size: 10px; border-radius: 4px; }
+
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.status-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.off { background: var(--red); }
+
+.cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.cmd-grid button { padding: 7px 6px; font-size: 11px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
+.cmd-grid button:hover { background: var(--border); border-color: var(--accent); }
+
+/* ── Main Panels ────────────────────────────────────────── */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.panel-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: 8px 8px 0 0; }
+.panel-header h2 { font-size: 13px; font-weight: 600; }
+.panel-body { flex: 1; overflow-y: auto; padding: 8px; }
+.panel-footer { padding: 8px 14px; border-top: 1px solid var(--border); background: var(--surface2); border-radius: 0 0 8px 8px; display: flex; gap: 6px; align-items: center; }
+
+#monitor-panel { flex: 1; min-height: 0; }
+#builder-panel { max-height: 280px; min-height: 150px; }
+#emulator-panel { max-height: 340px; min-height: 180px; }
+
+/* ── Monitor ────────────────────────────────────────────── */
+.monitor-entry { font-family: var(--mono); font-size: 12px; padding: 4px 10px; border-bottom: 1px solid rgba(48,54,61,.4); display: flex; gap: 8px; align-items: baseline; line-height: 1.6; }
+.monitor-entry:hover { background: rgba(88,166,255,.04); }
+.monitor-entry .time { color: var(--text2); font-size: 11px; white-space: nowrap; min-width: 80px; }
+.monitor-entry .arrow { font-weight: 700; min-width: 28px; text-align: center; }
+.monitor-entry .arrow.host { color: var(--host-color); }
+.monitor-entry .arrow.motor { color: var(--motor-color); }
+.monitor-entry .arrow.emulated { color: var(--emulated-color); }
+.monitor-entry .hex { color: var(--yellow); letter-spacing: .3px; flex-shrink: 0; }
+.monitor-entry .desc { color: var(--text2); flex: 1; }
+.monitor-entry .tag { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.monitor-entry .tag.emulated { background: rgba(163,113,247,.2); color: var(--purple); }
+
+.toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.toolbar button { font-size: 11px; padding: 4px 10px; }
+.toolbar .sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+
+/* ── Command Builder ────────────────────────────────────── */
+.builder-tabs { display: flex; gap: 2px; padding: 6px 14px; background: var(--surface2); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.builder-tab { padding: 5px 12px; font-size: 11px; border-radius: 5px 5px 0 0; background: transparent; color: var(--text2); border: 1px solid transparent; }
+.builder-tab:hover { color: var(--text); background: rgba(88,166,255,.08); }
+.builder-tab.active { background: var(--bg); color: var(--accent); border-color: var(--border); border-bottom-color: var(--bg); }
+.builder-form { display: flex; gap: 6px; padding: 10px 14px; flex-wrap: wrap; align-items: flex-end; }
+.builder-form .form-group { margin-bottom: 0; min-width: 85px; }
+.builder-form .form-group label { font-size: 10px; }
+.builder-form .form-group input, .builder-form .form-group select { padding: 5px 8px; font-size: 12px; }
+.hex-preview { font-family: var(--mono); font-size: 12px; color: var(--yellow); padding: 6px 14px; background: rgba(210,153,29,.06); border-top: 1px solid var(--border); }
+
+/* ── Emulator Panel ─────────────────────────────────────── */
+.motor-state-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.motor-state-table th { text-align: left; padding: 6px 8px; font-size: 10px; color: var(--text2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.motor-state-table td { padding: 4px 8px; border-bottom: 1px solid rgba(48,54,61,.3); font-family: var(--mono); font-size: 11px; }
+.motor-state-table tr.editable { cursor: pointer; }
+.motor-state-table tr.editable:hover { background: rgba(88,166,255,.06); }
+.motor-state-table .addr { color: var(--accent); font-weight: 600; }
+.motor-state-table .fw { font-size: 10px; padding: 1px 4px; border-radius: 3px; }
+.motor-state-table .fw.emm { background: rgba(63,185,80,.15); color: var(--green); }
+.motor-state-table .fw.x { background: rgba(88,166,255,.15); color: var(--accent); }
+.flag-badge { display: inline-block; padding: 0px 5px; border-radius: 3px; font-size: 10px; margin: 1px; }
+.flag-badge.on { background: rgba(63,185,80,.2); color: var(--green); }
+.flag-badge.off { background: rgba(139,148,158,.1); color: var(--text2); }
+
+/* ── Modal ──────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 560px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.modal-header h3 { font-size: 15px; }
+.modal-body { padding: 16px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.modal-body .full-width { grid-column: 1 / -1; }
+.modal-body label { font-size: 11px; color: var(--text2); display: block; margin-bottom: 3px; }
+.modal-body input, .modal-body select { width: 100%; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); outline: none; font-family: var(--mono); font-size: 12px; }
+.modal-body input:focus, .modal-body select:focus { border-color: var(--accent); }
+.modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+.flag-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.flag-row label { font-size: 11px; display: flex; align-items: center; gap: 3px; cursor: pointer; }
+.flag-row input[type=checkbox] { width: auto; accent-color: var(--accent); }
+
+/* ── Motor State Cards (Sidebar) ────────────────────────── */
+#motor-state-section { border-bottom: 1px solid var(--border); }
+#motor-state-container { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+.motor-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 11px; }
+.motor-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.motor-card-addr { color: var(--accent); font-weight: 700; font-size: 13px; }
+.motor-card-fw { font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; letter-spacing: .5px; }
+.motor-card-fw.emm { background: rgba(63,185,80,.15); color: var(--green); }
+.motor-card-fw.x { background: rgba(88,166,255,.15); color: var(--accent); }
+.motor-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; }
+.motor-card-param { display: flex; justify-content: space-between; align-items: baseline; padding: 2px 0; border-bottom: 1px solid rgba(48,54,61,.25); }
+.motor-card-param .label { color: var(--text2); font-size: 10px; white-space: nowrap; }
+.motor-card-param .value { color: var(--text); font-family: var(--mono); font-size: 10px; text-align: right; }
+.motor-card .flag-row-card { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 6px; padding-top: 4px; border-top: 1px solid var(--border); }
+.motor-card .flag-row-card .label-mini { font-size: 9px; color: var(--text2); margin-right: 2px; }
+
+/* ── Monitor Entry Enhancements ─────────────────────────── */
+.source-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 700; flex-shrink: 0; letter-spacing: .3px; }
+.source-badge.sent { background: var(--sent-badge-bg); color: var(--sent-badge-color); }
+.source-badge.received { background: var(--received-badge-bg); color: var(--received-badge-color); }
+.monitor-entry .cmd-name { color: var(--cmd-name-color); font-family: var(--font); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+.monitor-entry .dir-text { font-size: 10px; color: var(--text2); flex-shrink: 0; }
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+.conn-status { display: flex; align-items: center; padding: 8px 16px; background: var(--surface2); font-size: 12px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <h1 style="font-size:15px;font-weight:700;color:var(--accent2)">ZDT_X42S 调试工具</h1>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px;">闭环步进电机串口调试与模拟</div>
+      </div>
+    </div>
+
+    <!-- 串口配置 -->
+    <div class="side-section">
+      <h3>串口配置</h3>
+      <div class="form-group">
+        <label>端口</label>
+        <select id="port-select"><option value="">加载中...</option></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>波特率</label>
+          <select id="baud-select">
+            <option value="9600">9600</option>
+            <option value="19200">19200</option>
+            <option value="38400">38400</option>
+            <option value="57600">57600</option>
+            <option value="115200" selected>115200</option>
+            <option value="256000">256000</option>
+            <option value="512000">512000</option>
+            <option value="921600">921600</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>校验方式</label>
+          <select id="checksum-select">
+            <option value="0x6B">0x6B</option>
+            <option value="xor">XOR</option>
+            <option value="crc8">CRC-8</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <button class="btn-primary" id="btn-connect" onclick="toggleSerial()" style="flex:1;">连接串口</button>
+        <button class="btn-sm" onclick="refreshPorts()" title="刷新端口列表">&#x21bb;</button>
+      </div>
+      <div class="conn-status" id="conn-status" style="margin-top:8px;">
+        <span class="status-dot off"></span> <span id="conn-text">未连接</span>
+      </div>
+    </div>
+
+    <!-- 电机配置 -->
+    <div class="side-section">
+      <h3>电机配置</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>地址 (1-255)</label>
+          <input type="number" id="motor-addr" value="1" min="0" max="255">
+        </div>
+        <div class="form-group">
+          <label>固件类型</label>
+          <select id="motor-fw">
+            <option value="emm">Emm</option>
+            <option value="x">X</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>发送目标</label>
+        <select id="send-target">
+          <option value="serial">串口</option>
+          <option value="emulator">模拟器</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 快捷指令 -->
+    <div class="side-section">
+      <h3>快捷指令</h3>
+      <div class="cmd-grid" id="quick-cmds">
+        <button onclick="quickCmd(0xFE)">立即停止</button>
+        <button onclick="quickCmd(0xF3, {enable: 1})">使能</button>
+        <button onclick="quickCmd(0xF3, {enable: 0})">失能</button>
+        <button onclick="quickCmd(0x9A, {homing_mode: 0})">触发回零</button>
+        <button onclick="quickCmd(0x36)">读取位置</button>
+        <button onclick="quickCmd(0x3A)">读取状态</button>
+        <button onclick="quickCmd(0x35)">读取转速</button>
+        <button onclick="quickCmd(0x27)">读取电流</button>
+        <button onclick="quickCmd(0x24)">读取电压</button>
+        <button onclick="quickCmd(0x39)">读取温度</button>
+        <button onclick="quickCmd(0x0A)">位置清零</button>
+        <button onclick="quickCmd(0x3C)">全部标志</button>
+        <button onclick="quickCmd(0x1F)">固件版本</button>
+        <button onclick="quickCmd(0x43)">系统状态</button>
+        <button onclick="quickCmd(0x06)">编码器校准</button>
+        <button onclick="quickCmd(0x15, {}, 0)">扫描ID</button>
+      </div>
+    </div>
+
+    <!-- 电机实时状态 -->
+    <div class="side-section" id="motor-state-section" style="display:none;">
+      <h3>电机实时状态 <span id="motor-state-count" style="color:var(--text2);font-weight:400;font-size:10px;"></span></h3>
+      <div id="motor-state-container">
+        <div style="color:var(--text2);font-size:11px;padding:8px 0;">发送 0x43 命令或等待定时返回数据...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar toggle -->
+  <button id="sidebar-toggle-btn" onclick="toggleSidebar()" title="收起侧边栏">◀</button>
+
+  <!-- MAIN -->
+  <div id="main">
+    <!-- 数据监控 -->
+    <div class="panel" id="monitor-panel">
+      <div class="panel-header">
+        <h2>数据监控</h2>
+        <div class="toolbar">
+          <button class="btn-sm" onclick="clearMonitor()">清空</button>
+          <button class="btn-sm" id="btn-autoscroll" onclick="toggleAutoScroll()">自动: 开</button>
+          <span class="sep"></span>
+          <button class="btn-sm" id="btn-raw" onclick="toggleRaw()">已解析</button>
+          <select id="filter-dir" onchange="applyFilter()" style="font-size:11px;padding:3px 6px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+            <option value="all">全部</option>
+            <option value="host_to_motor">仅 H→M</option>
+            <option value="motor_to_host">仅 M→H</option>
+          </select>
+        </div>
+      </div>
+      <div class="panel-body" id="monitor-body">
+        <div style="color:var(--text2);text-align:center;padding:40px;font-size:13px;">
+          等待数据...<br><small style="font-size:11px;">连接串口或启动模拟器以查看通信数据</small>
+        </div>
+      </div>
+      <div class="panel-footer">
+        <input type="text" id="hex-input" placeholder="输入HEX指令 (如: 01 36 6B)" style="flex:1;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;"
+               onkeydown="if(event.key==='Enter')sendHex()">
+        <button class="btn-primary" onclick="sendHex()" style="width:auto;padding:7px 16px;">发送</button>
+        <button class="btn-accent" onclick="sendHexToEmulator()" style="width:auto;padding:7px 16px;white-space:nowrap;">发至模拟器</button>
+      </div>
+    </div>
+
+    <!-- 指令生成器 -->
+    <div class="panel" id="builder-panel">
+      <div class="panel-header">
+        <h2>指令生成器</h2>
+        <button class="btn-sm" onclick="sendBuilder()">发送指令</button>
+      </div>
+      <div class="builder-tabs" id="builder-tabs">
+        <button class="builder-tab active" data-mode="position_x">位置 (X)</button>
+        <button class="builder-tab" data-mode="position_emm">位置 (Emm)</button>
+        <button class="builder-tab" data-mode="speed_x">速度 (X)</button>
+        <button class="builder-tab" data-mode="speed_emm">速度 (Emm)</button>
+        <button class="builder-tab" data-mode="torque">力矩 (X)</button>
+        <button class="builder-tab" data-mode="stop">停止</button>
+        <button class="builder-tab" data-mode="homing">回零</button>
+        <button class="builder-tab" data-mode="enable">使能</button>
+      </div>
+      <div class="builder-form" id="builder-form"></div>
+      <div class="hex-preview" id="hex-preview">HEX 预览将显示在这里...</div>
+    </div>
+
+    <!-- 电机模拟器 -->
+    <div class="panel" id="emulator-panel">
+      <div class="panel-header">
+        <h2>电机模拟器</h2>
+        <div class="toolbar">
+          <label style="font-size:11px;color:var(--text2);">电机数:</label>
+          <input type="number" id="emu-count" value="2" min="1" max="8" style="width:50px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);text-align:center;">
+          <label style="font-size:11px;color:var(--text2);margin-left:4px;">固件:</label>
+          <select id="emu-default-fw" style="font-size:11px;padding:3px 6px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;">
+            <option value="emm">Emm</option>
+            <option value="x">X</option>
+            <option value="mixed" selected>混合(Emm/X)</option>
+          </select>
+          <button class="btn-sm btn-green" id="btn-emu-start" onclick="toggleEmulator()">启动</button>
+          <button class="btn-sm btn-danger" id="btn-emu-stop" onclick="stopEmulator()" style="display:none;">停止</button>
+          <button class="btn-sm btn-accent" id="btn-emu-add" onclick="addEmuMotor()" style="display:none;" title="添加一个电机">+电机</button>
+          <span class="sep"></span>
+          <span id="emu-status" style="font-size:11px;color:var(--text2);">已停止</span>
+        </div>
+      </div>
+      <div class="panel-body" style="overflow-x:auto;">
+        <table class="motor-state-table" id="motor-table">
+          <thead><tr>
+            <th>地址</th><th>固件</th><th>位置</th><th>转速</th><th>目标位置</th><th>电流</th><th>电压</th><th>温度</th><th>使能</th><th>状态</th><th>操作</th>
+          </tr></thead>
+          <tbody id="motor-tbody">
+            <tr><td colspan="11" style="color:var(--text2);text-align:center;padding:20px;">启动模拟器后可查看电机状态，点击行可编辑电机参数</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑电机的模态框 -->
+<div class="modal-overlay" id="modal-overlay" style="display:none;" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">编辑电机 #1</h3>
+      <button class="btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn-sm" onclick="closeModal()">取消</button>
+      <button class="btn-primary" onclick="saveMotorEdit()" style="width:auto;">保存修改</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+// ── State ──────────────────────────────────────────────────────
+const S = {
+  socket: null,
+  serialConnected: false,
+  emulatorRunning: false,
+  motorAddr: 1,
+  firmware: 'emm',
+  checksum: '0x6B',
+  sendTarget: 'serial',
+  autoScroll: true,
+  rawMode: false,
+  filterDir: 'all',
+  builderMode: 'position_x',
+  monitorEntries: [],
+  allEntries: [],
+  editingMotor: null,
+  currentMotorStates: [],
+  sidebarOpen: true,
+};
+
+// ── Init ───────────────────────────────────────────────────────
+function init() {
+  S.socket = io();
+  S.socket.on('connect', () => console.log('SocketIO 已连接'));
+  S.socket.on('serial_data', onSerialData);
+  S.socket.on('serial_status', onSerialStatus);
+  S.socket.on('serial_error', onSerialError);
+  S.socket.on('emulator_status', onEmulatorStatus);
+  S.socket.on('emulator_state', onEmulatorState);
+  S.socket.on('motor_states_update', onMotorStatesUpdate);
+
+  document.getElementById('motor-addr').onchange = function() { S.motorAddr = parseInt(this.value) || 1; };
+  document.getElementById('motor-fw').onchange = function() {
+    S.firmware = this.value;
+    S.socket.emit('set_config', {firmware: this.value});
+    updateBuilder();
+  };
+  document.getElementById('send-target').onchange = function() { S.sendTarget = this.value; };
+  document.getElementById('checksum-select').onchange = function() { S.checksum = this.value; };
+
+  document.querySelectorAll('.builder-tab').forEach(tab => {
+    tab.onclick = function() {
+      document.querySelectorAll('.builder-tab').forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      S.builderMode = this.dataset.mode;
+      updateBuilder();
+    };
+  });
+
+  refreshPorts();
+  updateBuilder();
+}
+document.addEventListener('DOMContentLoaded', init);
+
+// ── Sidebar Toggle ─────────────────────────────────────────────
+function toggleSidebar() {
+  S.sidebarOpen = !S.sidebarOpen;
+  document.getElementById('app').classList.toggle('sidebar-closed', !S.sidebarOpen);
+  document.getElementById('sidebar-toggle-btn').textContent = S.sidebarOpen ? '◀' : '▶';
+  setTimeout(function() { window.dispatchEvent(new Event('resize')); }, 300);
+}
+
+// ── Motor State Cards ───────────────────────────────────────────
+function onMotorStatesUpdate(data) {
+  if (!data.states || data.states.length === 0) return;
+  renderMotorCards(data.states);
+}
+
+function renderMotorCards(states) {
+  var container = document.getElementById('motor-state-container');
+  var section = document.getElementById('motor-state-section');
+  if (!states || states.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  document.getElementById('motor-state-count').textContent = '(' + states.length + ')';
+
+  var html = '';
+  states.forEach(function(m) {
+    var fwClass = m.firmware || 'emm';
+    var pos = m.position_deg != null ? m.position_deg.toFixed(1) + '°' : '--';
+    var spd = m.speed_rpm != null ? m.speed_rpm.toFixed(1) + ' RPM' : '--';
+    var tgt = m.target_position_deg != null ? m.target_position_deg.toFixed(1) + '°' : '--';
+    var err = m.position_error_deg != null ? m.position_error_deg.toFixed(3) + '°' : '--';
+    var vol = m.bus_voltage_mv != null ? (m.bus_voltage_mv / 1000).toFixed(2) + 'V' : '--';
+    var cur = m.phase_current_ma != null ? m.phase_current_ma.toFixed(0) + 'mA' : '--';
+    var tmp = m.temperature_c != null ? m.temperature_c.toFixed(0) + '°C' : '--';
+    var enc = m.calibrated_encoder != null ? m.calibrated_encoder : (m.encoder_raw != null ? m.encoder_raw : '--');
+
+    var motorFlagsHtml = buildMiniFlags(m.motor_flags_detail || m.motor_flags, [
+      {bit:0, label:'使能'},{bit:1, label:'到位'},{bit:2, label:'堵转'},{bit:3, label:'堵保'},{bit:7, label:'掉电'}
+    ]);
+    var homingFlagsHtml = buildMiniFlags(m.homing_flags_detail || m.homing_flags, [
+      {bit:0, label:'编码器就绪'},{bit:1, label:'已校准'},{bit:2, label:'回零中'},{bit:3, label:'回零失败'},{bit:4, label:'过热保护'},{bit:5, label:'过流保护'}
+    ]);
+
+    html += '<div class="motor-card">' +
+      '<div class="motor-card-header">' +
+        '<span class="motor-card-addr">#' + m.addr + ' 电机</span>' +
+        '<span class="motor-card-fw ' + fwClass + '">' + (m.firmware || 'EMM').toUpperCase() + '</span>' +
+      '</div>' +
+      '<div class="motor-card-body">' +
+        '<div class="motor-card-param"><span class="label">位置</span><span class="value">' + pos + '</span></div>' +
+        '<div class="motor-card-param"><span class="label">转速</span><span class="value">' + spd + '</span></div>' +
+        '<div class="motor-card-param"><span class="label">目标位置</span><span class="value">' + tgt + '</span></div>' +
+        '<div class="motor-card-param"><span class="label">误差</span><span class="value">' + err + '</span></div>' +
+        '<div class="motor-card-param"><span class="label">电压</span><span class="value">' + vol + '</span></div>' +
+        '<div class="motor-card-param"><span class="label">电流</span><span class="value">' + cur + '</span></div>' +
+        '<div class="motor-card-param"><span class="label">温度</span><span class="value">' + tmp + '</span></div>' +
+        '<div class="motor-card-param"><span class="label">编码器</span><span class="value">' + enc + '</span></div>' +
+      '</div>' +
+      '<div class="flag-row-card"><span class="label-mini">状态:</span>' + motorFlagsHtml + '</div>' +
+      '<div class="flag-row-card"><span class="label-mini">回零:</span>' + homingFlagsHtml + '</div>' +
+    '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function buildMiniFlags(flags, definitions) {
+  if (flags === undefined || flags === null) return '<span style="color:var(--text2);font-size:9px;">--</span>';
+  // Accept both the number (bitfield) or the detail object
+  var raw = typeof flags === 'number' ? flags : 0;
+  if (typeof flags === 'object') {
+    return definitions.map(function(d) {
+      var on = flags[d.label];
+      return '<span class="flag-badge ' + (on ? 'on' : 'off') + '">' + d.label + '</span>';
+    }).join('');
+  }
+  return definitions.map(function(d) {
+    var on = raw & (1 << d.bit);
+    return '<span class="flag-badge ' + (on ? 'on' : 'off') + '">' + d.label + '</span>';
+  }).join('');
+}
+
+// ── Serial Ports ───────────────────────────────────────────────
+async function refreshPorts() {
+  try {
+    const resp = await fetch('/api/ports');
+    const ports = await resp.json();
+    const sel = document.getElementById('port-select');
+    sel.innerHTML = '';
+    if (ports.length === 0) {
+      sel.innerHTML = '<option value="">未找到串口设备</option>';
+    }
+    ports.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.port;
+      opt.textContent = `${p.port} - ${p.description || '未知设备'}`;
+      sel.appendChild(opt);
+    });
+  } catch(e) {
+    document.getElementById('port-select').innerHTML = '<option value="">加载失败</option>';
+  }
+}
+
+// ── Serial Connect/Disconnect ──────────────────────────────────
+let _connectTimeout = null;
+
+function toggleSerial() {
+  if (S.serialConnected) {
+    S.socket.emit('serial_disconnect');
+    resetConnectButton();
+  } else {
+    const port = document.getElementById('port-select').value;
+    const baud = parseInt(document.getElementById('baud-select').value);
+    if (!port) return alert('请先选择串口');
+    document.getElementById('btn-connect').textContent = '连接中...';
+    document.getElementById('btn-connect').disabled = true;
+    document.getElementById('conn-text').textContent = '正在连接 ' + port + ' ...';
+    S.socket.emit('serial_connect', {
+      port, baudrate: baud,
+      checksum: S.checksum,
+      firmware: S.firmware,
+    });
+    // Safety timeout: reset button if no response after 5 seconds
+    clearTimeout(_connectTimeout);
+    _connectTimeout = setTimeout(function() {
+      if (!S.serialConnected) {
+        resetConnectButton();
+        document.getElementById('conn-text').textContent = '连接超时，请检查端口';
+        alert('连接超时 (5秒)，端口可能被占用或是蓝牙虚拟串口，请尝试其他端口');
+      }
+    }, 5000);
+  }
+}
+
+function resetConnectButton() {
+  const btn = document.getElementById('btn-connect');
+  btn.textContent = '连接串口';
+  btn.disabled = false;
+  btn.classList.remove('btn-danger');
+  btn.classList.add('btn-primary');
+  const dot = document.querySelector('#conn-status .status-dot');
+  if (dot) { dot.classList.remove('on'); dot.classList.add('off'); }
+}
+
+function onSerialStatus(data) {
+  clearTimeout(_connectTimeout);
+  S.serialConnected = data.connected;
+  const btn = document.getElementById('btn-connect');
+  const dot = document.querySelector('#conn-status .status-dot');
+  const txt = document.getElementById('conn-text');
+  btn.disabled = false;
+
+  if (data.connected) {
+    btn.textContent = '断开连接';
+    btn.classList.add('btn-danger');
+    btn.classList.remove('btn-primary');
+    dot.classList.add('on'); dot.classList.remove('off');
+    txt.textContent = data.status || `已连接 ${data.port} @ ${data.baudrate}`;
+  } else {
+    btn.textContent = '连接串口';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-primary');
+    dot.classList.remove('on'); dot.classList.add('off');
+    txt.textContent = data.status || '未连接';
+    // If the error is about timeout/unresponsive port, don't alert
+    // since the status text is already shown
+  }
+}
+
+function onSerialError(data) {
+  addMonitorEntry({
+    hex: 'ERROR',
+    direction: 'unknown',
+    direction_label: '!!!',
+    parsed: { status_text: data.message, human_readable: data.message },
+    emulated: false,
+  });
+  // Show alert for critical errors
+  if (data.message && data.message.includes('无法打开')) {
+    alert(data.message);
+  }
+}
+
+// ── Monitor ────────────────────────────────────────────────────
+function onSerialData(data) {
+  S.allEntries.push(data);
+  if (S.filterDir === 'all' || S.filterDir === data.direction) {
+    S.monitorEntries.push(data);
+    if (S.monitorEntries.length > 1000) S.monitorEntries.shift();
+    renderMonitorEntry(data);
+  }
+}
+
+function renderMonitorEntry(data) {
+  const body = document.getElementById('monitor-body');
+  if (body.querySelector(':scope > div:first-child') && body.querySelector(':scope > div:first-child').style.textAlign === 'center') {
+    body.innerHTML = '';
+  }
+
+  const div = document.createElement('div');
+  div.className = 'monitor-entry';
+  const now = new Date();
+  const time = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+
+  const arrowClass = data.emulated ? 'emulated' : (data.direction === 'host_to_motor' ? 'host' : 'motor');
+  const source = data.source || (data.direction === 'host_to_motor' ? 'sent' : 'received');
+  const sourceLabel = source === 'sent' ? '发送' : '接收';
+  const sourceBadge = '<span class="source-badge ' + source + '">' + sourceLabel + '</span>';
+
+  const dirText = data.direction === 'host_to_motor' ? '控制器→电机' : '电机→控制器';
+  const dirSpan = '<span class="dir-text">' + dirText + '</span>';
+
+  const cmdName = data.parsed?.status_text || '';
+  const cmdSpan = cmdName ? '<span class="cmd-name">' + cmdName + '</span>' : '';
+
+  const tag = data.emulated ? '<span class="tag emulated">模拟</span>' : '';
+
+  div.innerHTML =
+    '<span class="time">' + time + '</span>' +
+    sourceBadge +
+    '<span class="arrow ' + arrowClass + '">' + (data.direction_label || '---') + '</span>' +
+    '<span class="hex">' + data.hex + '</span>' +
+    dirSpan +
+    cmdSpan +
+    tag;
+
+  const hexBtn = document.createElement('span');
+  hexBtn.textContent = ' ↺';
+  hexBtn.style.cssText = 'color:var(--text2);cursor:pointer;font-size:10px;';
+  hexBtn.title = '复制到发送框';
+  hexBtn.onclick = function() {
+    document.getElementById('hex-input').value = data.hex;
+  };
+  div.appendChild(hexBtn);
+
+  const desc = document.createElement('span');
+  desc.className = 'desc';
+  desc.textContent = data.parsed?.human_readable || data.parsed?.status_text || '';
+  div.appendChild(desc);
+
+  body.appendChild(div);
+  if (S.autoScroll) body.scrollTop = body.scrollHeight;
+}
+
+function addMonitorEntry(data) { onSerialData(data); }
+function clearMonitor() {
+  S.monitorEntries = []; S.allEntries = [];
+  document.getElementById('monitor-body').innerHTML = '';
+}
+function toggleAutoScroll() {
+  S.autoScroll = !S.autoScroll;
+  document.getElementById('btn-autoscroll').textContent = '自动: ' + (S.autoScroll ? '开' : '关');
+}
+function toggleRaw() {
+  S.rawMode = !S.rawMode;
+  document.getElementById('btn-raw').textContent = S.rawMode ? '原始数据' : '已解析';
+}
+function applyFilter() {
+  S.filterDir = document.getElementById('filter-dir').value;
+  const body = document.getElementById('monitor-body');
+  body.innerHTML = '';
+  S.monitorEntries = [];
+  S.allEntries.forEach(e => {
+    if (S.filterDir === 'all' || S.filterDir === e.direction) {
+      S.monitorEntries.push(e);
+      renderMonitorEntry(e);
+    }
+  });
+}
+
+// ── Send Hex ───────────────────────────────────────────────────
+function sendHex() {
+  const hex = document.getElementById('hex-input').value.trim();
+  if (!hex) return;
+  S.socket.emit('send_command', { hex, target: S.sendTarget });
+  document.getElementById('hex-input').value = '';
+}
+function sendHexToEmulator() {
+  const hex = document.getElementById('hex-input').value.trim();
+  if (!hex) return;
+  S.socket.emit('send_command', { hex, target: 'emulator' });
+  document.getElementById('hex-input').value = '';
+}
+
+// ── Quick Commands ─────────────────────────────────────────────
+function quickCmd(code, extraParams, overrideAddr) {
+  const addr = overrideAddr !== undefined ? overrideAddr : S.motorAddr;
+  const params = extraParams || {};
+  const target = S.sendTarget;
+  S.socket.emit('send_structured', { addr, code, firmware: S.firmware, params, target });
+}
+
+// ── Command Builder ────────────────────────────────────────────
+const BUILDER_MODES = {
+  position_x: {
+    title: '梯形加减速位置模式 (X)',
+    code: 0xFD, firmware: 'x',
+    fields: [
+      {name:'direction', label:'方向', type:'select', opts:{0:'CW',1:'CCW'}, default:0},
+      {name:'accel_accel', label:'加速加速度 (RPM/s)', type:'number', default:1000},
+      {name:'decel_accel', label:'减速加速度 (RPM/s)', type:'number', default:1000},
+      {name:'max_speed', label:'最高速度 (0.1RPM)', type:'number', default:10000, hint:'10000=1000.0RPM'},
+      {name:'position', label:'位置角度 (0.1°)', type:'number', default:3600, hint:'3600=360.0°'},
+      {name:'move_mode', label:'运动模式', type:'select', opts:{0:'相对(上一目标)',1:'绝对',2:'相对(当前位置)'}, default:0},
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+  position_emm: {
+    title: '位置模式 (Emm)',
+    code: 0xFD, firmware: 'emm',
+    fields: [
+      {name:'direction', label:'方向', type:'select', opts:{0:'CW',1:'CCW'}, default:0},
+      {name:'speed', label:'速度 (RPM)', type:'number', default:500},
+      {name:'accel', label:'加速度档位', type:'number', default:10, hint:'0-255, 0=瞬间'},
+      {name:'pulses', label:'脉冲数', type:'number', default:32000, hint:'16细分下3200=1圈'},
+      {name:'move_mode', label:'运动模式', type:'select', opts:{0:'相对(上一目标)',1:'绝对',2:'相对(当前位置)'}, default:0},
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+  speed_x: {
+    title: '速度模式 (X)',
+    code: 0xF6, firmware: 'x',
+    fields: [
+      {name:'direction', label:'方向', type:'select', opts:{0:'CW',1:'CCW'}, default:0},
+      {name:'accel_rpm_s', label:'加速度 (RPM/s)', type:'number', default:500},
+      {name:'speed', label:'速度 (0.1RPM)', type:'number', default:5000, hint:'5000=500.0RPM'},
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+  speed_emm: {
+    title: '速度模式 (Emm)',
+    code: 0xF6, firmware: 'emm',
+    fields: [
+      {name:'direction', label:'方向', type:'select', opts:{0:'CW',1:'CCW'}, default:0},
+      {name:'speed', label:'速度 (RPM)', type:'number', default:500},
+      {name:'accel', label:'加速度档位', type:'number', default:10, hint:'0-255, 0=无加减速'},
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+  torque: {
+    title: '力矩模式 (X)',
+    code: 0xF5, firmware: 'x',
+    fields: [
+      {name:'direction', label:'方向', type:'select', opts:{0:'CW',1:'CCW'}, default:0},
+      {name:'accel_ma_s', label:'加速度 (mA/s)', type:'number', default:200},
+      {name:'current_ma', label:'电流 (mA)', type:'number', default:600},
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+  stop: {
+    title: '立即停止',
+    code: 0xFE, firmware: 'emm',
+    fields: [
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+  homing: {
+    title: '触发回零',
+    code: 0x9A, firmware: 'emm',
+    fields: [
+      {name:'homing_mode', label:'回零模式', type:'select', opts:{0:'单圈就近',1:'单圈方向',2:'无限位碰撞',3:'限位开关',4:'坐标零点',5:'掉电位'}, default:0},
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+  enable: {
+    title: '电机使能',
+    code: 0xF3, firmware: 'emm',
+    fields: [
+      {name:'enable', label:'使能状态', type:'select', opts:{1:'使能(锁轴)',0:'失能(松轴)'}, default:1},
+      {name:'sync_flag', label:'同步标志', type:'select', opts:{0:'立即执行',1:'缓存'}, default:0},
+    ],
+  },
+};
+
+function updateBuilder() {
+  const mode = BUILDER_MODES[S.builderMode];
+  if (!mode) return;
+  let html = '';
+  mode.fields.forEach(f => {
+    if (f.type === 'select') {
+      html += `<div class="form-group"><label>${f.label}${f.hint?` <small style="color:var(--text2)">(${f.hint})</small>`:''}</label><select id="bf-${f.name}">`;
+      for (const [k,v] of Object.entries(f.opts)) {
+        html += `<option value="${k}" ${parseInt(k)===f.default?'selected':''}>${v}</option>`;
+      }
+      html += '</select></div>';
+    } else {
+      html += `<div class="form-group"><label>${f.label}${f.hint?` <small style="color:var(--text2)">(${f.hint})</small>`:''}</label><input type="number" id="bf-${f.name}" value="${f.default}"></div>`;
+    }
+  });
+  document.getElementById('builder-form').innerHTML = html;
+  updateHexPreview();
+  document.getElementById('builder-form').oninput = updateHexPreview;
+  document.getElementById('builder-form').onchange = updateHexPreview;
+}
+
+async function updateHexPreview() {
+  const mode = BUILDER_MODES[S.builderMode];
+  if (!mode) return;
+  const params = {};
+  mode.fields.forEach(f => {
+    const el = document.getElementById('bf-' + f.name);
+    if (el) params[f.name] = parseInt(el.value) || 0;
+  });
+  try {
+    const resp = await fetch('/api/build_command', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        addr: S.motorAddr, code: mode.code, firmware: mode.firmware,
+        params, cs_type: S.checksum,
+      }),
+    });
+    const data = await resp.json();
+    if (data.hex) {
+      document.getElementById('hex-preview').textContent = `${data.command_name}: ${data.hex} (${data.length} 字节)`;
+    } else {
+      document.getElementById('hex-preview').textContent = '错误: ' + (data.error || '未知');
+    }
+  } catch(e) {
+    document.getElementById('hex-preview').textContent = '预览出错';
+  }
+}
+
+function sendBuilder() {
+  const mode = BUILDER_MODES[S.builderMode];
+  if (!mode) return;
+  const params = {};
+  mode.fields.forEach(f => {
+    const el = document.getElementById('bf-' + f.name);
+    if (el) params[f.name] = parseInt(el.value) || 0;
+  });
+  S.socket.emit('send_structured', {
+    addr: S.motorAddr, code: mode.code,
+    firmware: mode.firmware, params,
+    target: S.sendTarget,
+  });
+}
+
+// ── Emulator ───────────────────────────────────────────────────
+function toggleEmulator() {
+  if (S.emulatorRunning) { stopEmulator(); } else { startEmulator(); }
+}
+
+function startEmulator() {
+  const count = parseInt(document.getElementById('emu-count').value) || 2;
+  const defaultFw = document.getElementById('emu-default-fw').value;
+  const motors = [];
+  for (let i = 1; i <= count; i++) {
+    let fw;
+    if (defaultFw === 'mixed') {
+      fw = i % 2 === 1 ? 'emm' : 'x';
+    } else {
+      fw = defaultFw;
+    }
+    motors.push({addr: i, firmware: fw});
+  }
+  S.socket.emit('emulator_start', {motors});
+}
+
+function addEmuMotor() {
+  if (!S.emulatorRunning) return;
+  // Find the largest addr, add one with alternating firmware
+  const addrs = S.currentMotorStates.map(m => m.addr);
+  const maxAddr = addrs.length > 0 ? Math.max(...addrs) : 0;
+  const newAddr = maxAddr + 1;
+  const emmCount = S.currentMotorStates.filter(m => m.firmware === 'emm').length;
+  const xCount = S.currentMotorStates.filter(m => m.firmware === 'x').length;
+  const fw = emmCount <= xCount ? 'emm' : 'x';
+  // Start a single new motor by stopping and restarting with one more
+  S.currentMotorStates.push({addr: newAddr, firmware: fw});
+  const motors = S.currentMotorStates.map(m => ({addr: m.addr, firmware: m.firmware}));
+  S.socket.emit('emulator_start', {motors});
+}
+
+function stopEmulator() {
+  S.socket.emit('emulator_stop');
+}
+
+function onEmulatorStatus(data) {
+  S.emulatorRunning = data.running;
+  document.getElementById('btn-emu-start').style.display = data.running ? 'none' : '';
+  document.getElementById('btn-emu-stop').style.display = data.running ? '' : 'none';
+  document.getElementById('btn-emu-add').style.display = data.running ? '' : 'none';
+  document.getElementById('emu-status').textContent = data.running ? `运行中 (${data.motors?.length || 0} 台电机)` : '已停止';
+  if (!data.running) {
+    S.currentMotorStates = [];
+    document.getElementById('motor-tbody').innerHTML = '<tr><td colspan="11" style="color:var(--text2);text-align:center;padding:20px;">启动模拟器后可查看电机状态，点击行可编辑电机参数</td></tr>';
+  }
+}
+
+function onEmulatorState(data) {
+  if (!data.motors) return;
+  S.currentMotorStates = data.motors;
+  const tbody = document.getElementById('motor-tbody');
+  let html = '';
+  data.motors.forEach(m => {
+    const flags = m.status_detail || {};
+    const keyFlags = ['Ens_TF','Prf_TF','Cgi_TF','Cgp_TF','Oac_TF'];
+    const flagHtml = keyFlags.map(k => {
+      const v = flags[k];
+      const label = {Ens_TF:'使能',Prf_TF:'到位',Cgi_TF:'堵转',Cgp_TF:'堵保',Oac_TF:'掉电'}[k] || k;
+      return `<span class="flag-badge ${v?'on':'off'}">${label}</span>`;
+    }).join('');
+    html += `<tr class="editable" onclick="openMotorEdit(${m.addr})">
+      <td class="addr">#${m.addr}</td>
+      <td><span class="fw ${m.firmware}">${m.firmware.toUpperCase()}</span></td>
+      <td>${m.position_deg.toFixed(1)}°</td>
+      <td>${m.speed_rpm.toFixed(1)} RPM</td>
+      <td>${m.target_position_deg.toFixed(1)}°</td>
+      <td>${m.phase_current_ma.toFixed(0)} mA</td>
+      <td>${m.bus_voltage_mv.toFixed(0)} mV</td>
+      <td>${m.temperature_c.toFixed(1)}°C</td>
+      <td>${m.enabled ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--red)">○</span>'}</td>
+      <td>${flagHtml}</td>
+      <td><button class="btn-xs btn-accent" onclick="event.stopPropagation();openMotorEdit(${m.addr})">编辑</button></td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+}
+
+// ── Motor Edit Modal ────────────────────────────────────────────
+function openMotorEdit(addr) {
+  const m = S.currentMotorStates.find(m => m.addr === addr);
+  if (!m) return;
+  S.editingMotor = addr;
+  document.getElementById('modal-title').textContent = `编辑电机 #${addr}`;
+  document.getElementById('modal-body').innerHTML = buildModalContent(m);
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function closeModal() {
+  S.editingMotor = null;
+  document.getElementById('modal-overlay').style.display = 'none';
+}
+
+function buildModalContent(m) {
+  const sf = m.status_detail || {};
+  const hf = m.homing_detail || {};
+  return `
+    <div>
+      <label>新地址 (修改后立即生效)</label>
+      <input type="number" id="edit-addr" value="${m.addr}" min="1" max="255">
+    </div>
+    <div>
+      <label>固件类型</label>
+      <select id="edit-fw">
+        <option value="emm" ${m.firmware==='emm'?'selected':''}>Emm</option>
+        <option value="x" ${m.firmware==='x'?'selected':''}>X</option>
+      </select>
+    </div>
+    <div>
+      <label>位置 (°)</label>
+      <input type="number" id="edit-pos" value="${m.position_deg}" step="0.1">
+    </div>
+    <div>
+      <label>转速 (RPM)</label>
+      <input type="number" id="edit-speed" value="${m.speed_rpm}" step="0.1">
+    </div>
+    <div>
+      <label>目标位置 (°)</label>
+      <input type="number" id="edit-target-pos" value="${m.target_position_deg}" step="0.1">
+    </div>
+    <div>
+      <label>目标转速 (RPM)</label>
+      <input type="number" id="edit-target-speed" value="${m.target_speed_rpm}" step="0.1">
+    </div>
+    <div>
+      <label>相电流 (mA)</label>
+      <input type="number" id="edit-current" value="${m.phase_current_ma}" step="1">
+    </div>
+    <div>
+      <label>总线电压 (mV)</label>
+      <input type="number" id="edit-voltage" value="${m.bus_voltage_mv}" step="1">
+    </div>
+    <div>
+      <label>温度 (°C)</label>
+      <input type="number" id="edit-temp" value="${m.temperature_c}" step="0.1">
+    </div>
+    <div>
+      <label>使能状态</label>
+      <select id="edit-enabled">
+        <option value="1" ${m.enabled?'selected':''}>使能 (锁轴)</option>
+        <option value="0" ${!m.enabled?'selected':''}>失能 (松轴)</option>
+      </select>
+    </div>
+    <div class="full-width">
+      <label>电机状态标志 (bitfield)</label>
+      <div class="flag-row">
+        ${buildFlagCheckboxes('motor', sf)}
+      </div>
+      <input type="number" id="edit-status-flags" value="${m.status_flags}" style="margin-top:4px;width:100%;" min="0" max="255">
+    </div>
+    <div class="full-width">
+      <label>回零状态标志 (bitfield)</label>
+      <div class="flag-row">
+        ${buildFlagCheckboxes('homing', hf)}
+      </div>
+      <input type="number" id="edit-homing-flags" value="${m.homing_flags}" style="margin-top:4px;width:100%;" min="0" max="255">
+    </div>
+  `;
+}
+
+function buildFlagCheckboxes(prefix, flags) {
+  const motorFlags = [
+    {name:'Ens_TF', bit:0, label:'使能'},
+    {name:'Prf_TF', bit:1, label:'到位'},
+    {name:'Cgi_TF', bit:2, label:'堵转'},
+    {name:'Cgp_TF', bit:3, label:'堵保'},
+    {name:'Esi_LF', bit:4, label:'左限位'},
+    {name:'Esi_RF', bit:5, label:'右限位'},
+    {name:'Oac_TF', bit:7, label:'掉电'},
+  ];
+  const homingFlags = [
+    {name:'Enc_Rdy', bit:0, label:'编码器'},
+    {name:'Cal_Rdy', bit:1, label:'已校准'},
+    {name:'Org_SF', bit:2, label:'回零中'},
+    {name:'Org_CF', bit:3, label:'回零失败'},
+    {name:'Otp_TF', bit:4, label:'过热保护'},
+    {name:'Ocp_TF', bit:5, label:'过流保护'},
+  ];
+  const list = prefix === 'motor' ? motorFlags : homingFlags;
+  return list.map(f => {
+    const checked = flags[f.name] !== undefined ? flags[f.name] : false;
+    return `<label><input type="checkbox" id="flag-${prefix}-${f.bit}" ${checked?'checked':''} onchange="updateFlagByte('${prefix}')"> ${f.label} (bit${f.bit})</label>`;
+  }).join('');
+}
+
+function updateFlagByte(prefix) {
+  const motorFlags = [0,1,2,3,4,5,null,7];
+  const homingFlags = [0,1,2,3,4,5];
+  const list = prefix === 'motor' ? motorFlags : homingFlags;
+  let val = 0;
+  list.forEach((bit, i) => {
+    if (bit === null) return;
+    const cb = document.getElementById(`flag-${prefix}-${bit}`);
+    if (cb && cb.checked) val |= (1 << bit);
+  });
+  document.getElementById(prefix === 'motor' ? 'edit-status-flags' : 'edit-homing-flags').value = val;
+}
+
+function saveMotorEdit() {
+  if (!S.editingMotor) return;
+  const getVal = (id, type='float') => {
+    const el = document.getElementById(id);
+    if (!el) return undefined;
+    return type === 'int' ? parseInt(el.value) : parseFloat(el.value);
+  };
+
+  const oldAddr = S.editingMotor;
+  const newAddr = getVal('edit-addr', 'int');
+  const statusFlags = getVal('edit-status-flags', 'int');
+  const homingFlags = getVal('edit-homing-flags', 'int');
+
+  const data = {
+    addr: oldAddr,
+    new_addr: (newAddr && newAddr !== oldAddr) ? newAddr : 0,
+    position_deg: getVal('edit-pos'),
+    speed_rpm: getVal('edit-speed'),
+    target_position_deg: getVal('edit-target-pos'),
+    target_speed_rpm: getVal('edit-target-speed'),
+    phase_current_ma: getVal('edit-current'),
+    bus_voltage_mv: getVal('edit-voltage'),
+    temperature_c: getVal('edit-temp'),
+    enabled: parseInt(document.getElementById('edit-enabled')?.value || '1'),
+    firmware: document.getElementById('edit-fw')?.value || 'emm',
+    status_flags: statusFlags,
+    homing_flags: homingFlags,
+  };
+
+  S.socket.emit('emulator_update_motor', data);
+  closeModal();
+}
+</script>
+</body>
+</html>
